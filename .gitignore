@@ -1,0 +1,17 @@
+node_modules/
+.tmp/
+data/*.json
+*.log
+.DS_Store
+.env
+*.opencode.json
+
+# Capacitor / Android
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+.gradle/
+
+# Local helper output
+scripts/*.local.sh

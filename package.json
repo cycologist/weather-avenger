@@ -1,0 +1,24 @@
+{
+  "name": "avercast",
+  "version": "1.0.0",
+  "description": "Multi-source weather forecast consensus app",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test",
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "android:sync": "cap sync android",
+    "android:build": "cd android && ./gradlew assembleDebug"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/cli": "^7.6.10",
+    "@capacitor/core": "^7.6.10",
+    "@capacitor/status-bar": "^7.0.6",
+    "express": "^4.22.3"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "appId": "com.matthias.avercast",
+  "appName": "Avercast",
+  "webDir": "public",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

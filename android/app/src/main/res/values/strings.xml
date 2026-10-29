@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Avercast</string>
+    <string name="title_activity_main">Avercast</string>
+    <string name="package_name">com.matthias.avercast</string>
+    <string name="custom_url_scheme">com.matthias.avercast</string>
+</resources>
