@@ -1104,6 +1104,23 @@ html[data-theme="dark"] .sky-orb {
   padding-bottom: 18px;
 }
 
+.chart-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.chart-tabs {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.chart-tabs button {
+  padding: 6px 10px;
+  font-size: 0.68rem;
+}
+
 .legend {
   display: flex;
   align-items: center;
@@ -1133,6 +1150,49 @@ html[data-theme="dark"] .sky-orb {
   border: 1px solid color-mix(in srgb, var(--chart-line) 22%, transparent);
   border-radius: 3px;
   background: var(--chart-band);
+}
+
+.legend-bar {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--chart-line) 58%, transparent);
+}
+
+.legend-range {
+  position: relative;
+  width: 9px;
+  height: 13px;
+}
+
+.legend-range::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 50%;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--chart-line) 60%, transparent);
+  transform: translateX(-50%);
+}
+
+.legend-range::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 1px;
+  width: 7px;
+  height: 13px;
+  border-top: 2px solid color-mix(in srgb, var(--chart-line) 60%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--chart-line) 60%, transparent);
+}
+
+.legend-arrow {
+  width: 12px;
+  height: 12px;
+  fill: var(--sky);
 }
 
 .chart-wrap {
@@ -1175,6 +1235,14 @@ html[data-theme="dark"] .sky-orb {
   font-variant-numeric: tabular-nums;
 }
 
+.chart-unit {
+  fill: var(--faint);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
 .chart-day-label {
   fill: var(--muted);
   font-family: var(--font-sans);
@@ -1190,6 +1258,32 @@ html[data-theme="dark"] .sky-orb {
 
 .chart-band {
   fill: url(#tempBandGradient);
+}
+
+.chart-bar {
+  fill: color-mix(in srgb, var(--chart-line) 58%, transparent);
+}
+
+.chart-bar-range {
+  stroke: color-mix(in srgb, var(--chart-line) 62%, transparent);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.chart-wind-direction {
+  pointer-events: none;
+}
+
+.chart-wind-arrow {
+  fill: var(--sky);
+  opacity: 0.92;
+}
+
+.chart-wind-label {
+  fill: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 640;
 }
 
 .chart-line {
@@ -1248,6 +1342,17 @@ html[data-theme="dark"] .sky-orb {
 .chart-tooltip .tt-temp {
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip .tt-metric {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip .tt-wind-dir {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.67rem;
 }
 
 .chart-note {
@@ -2626,6 +2731,20 @@ dialog.dialog::backdrop {
   .legend {
     gap: 10px;
     font-size: 0.62rem;
+  }
+
+  .chart-controls {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .chart-tabs {
+    justify-content: flex-start;
+  }
+
+  .chart-tabs button {
+    padding: 5px 8px;
+    font-size: 0.64rem;
   }
 
   .chart-wrap {

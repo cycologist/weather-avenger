@@ -265,14 +265,18 @@
           </section>
 
           <section class="card chart-card" id="chart-card">
-            <div class="card-head">
+            <div class="card-head chart-head">
               <div>
                 <p class="section-kicker">Ensemble</p>
-                <h2>7-day temperature</h2>
+                <h2 id="chart-title">7-day temperature</h2>
               </div>
-              <div class="legend" aria-label="Chart legend">
-                <span class="legend-item"><span class="legend-line"></span> Average</span>
-                <span class="legend-item"><span class="legend-band"></span> Low–high range</span>
+              <div class="chart-controls">
+                <div class="segmented chart-tabs" id="chart-tabs" role="tablist" aria-label="Choose chart metric">
+                  <button type="button" data-metric="temp" aria-pressed="true">Temperature</button>
+                  <button type="button" data-metric="precip" aria-pressed="false">Precipitation</button>
+                  <button type="button" data-metric="wind" aria-pressed="false">Wind</button>
+                </div>
+                <div class="legend" id="chart-legend" aria-label="Chart legend"></div>
               </div>
             </div>
             <div class="chart-wrap" id="chart-wrap">

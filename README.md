@@ -1,6 +1,6 @@
 # Avercast
 
-Avercast compares several free weather services for any place on Earth and shows one consensus forecast. Pick a location on the world map, search for a city, or use your current position. The main screen shows the average, lowest and highest forecast for temperature, wind, humidity and precipitation over the next seven days.
+Avercast compares several free weather services for any place on Earth and shows one consensus forecast. Pick a location on the world map, search for a city, or use your current position. The main screen shows the average, lowest and highest forecast for temperature, wind, humidity and precipitation over the next seven days, and the 7-day chart can switch between temperature, precipitation, and wind strength with direction.
 
 No API keys are required.
 
@@ -22,6 +22,7 @@ npm run dev
 ## What it does
 
 - **Location** — world map with pan/zoom and click-to-pick, place search, and browser geolocation. On first launch the app asks for your position and starts there; if you decline, Berlin is used as a fallback. A place you pick is remembered in `localStorage`, together with the theme.
+- **Chart switcher** — the 7-day ensemble chart toggles between temperature (line plus low–high band), precipitation (daily-total bars with the source range), and wind (mean-speed line, source range, and a direction arrow for every day). The last choice is remembered.
 - **Weather services menu** — a source list with enable/disable switches and delete confirmation. Add more services from a scanned catalog.
 - **Scraped catalog** — on startup the server reads the Weather section of the [public-apis](https://github.com/public-apis/public-apis) README and keeps the result for 24 hours. Supported services are matched by host and name. The *All scanned* tab shows every entry found, including services that have no adapter yet. If the scrape fails, a bundled list is used.
 - **Consensus forecast** — each enabled service counts once per day. Temperature and the other values are aggregated per calendar day in the location's timezone.

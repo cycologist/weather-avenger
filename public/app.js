@@ -17,6 +17,7 @@ const DEFAULT_LOCATION = {
 
 const STORAGE_LOCATION = 'avercast-location';
 const STORAGE_THEME = 'avercast-theme';
+const STORAGE_CHART = 'avercast-chart';
 const DAYS = 7;
 
 // Declared before `state` because storedLocation() uses them during module init.
@@ -25,6 +26,7 @@ const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
 const state = {
   location: storedLocation(),
+  chartMetric: storedChartMetric(),
   sources: [],
   sourcesLoaded: false,
   catalog: null,
@@ -86,6 +88,9 @@ const dom = {
   statPrecipRange: $('stat-precip-range'),
   statPrecipBar: $('stat-precip-bar'),
   tempChart: $('temp-chart'),
+  chartTitle: $('chart-title'),
+  chartTabs: $('chart-tabs'),
+  chartLegend: $('chart-legend'),
   chartWrap: $('chart-wrap'),
   chartTooltip: $('chart-tooltip'),
   chartNote: $('chart-note'),
@@ -156,6 +161,24 @@ function saveLocation(location) {
     );
   } catch {
     // Storage may be disabled; the app still works for this session.
+  }
+}
+
+function storedChartMetric() {
+  try {
+    const saved = localStorage.getItem(STORAGE_CHART);
+    if (saved === 'temp' || saved === 'precip' || saved === 'wind') return saved;
+  } catch {
+    // Unreadable storage means the default chart.
+  }
+  return 'temp';
+}
+
+function saveChartMetric(metric) {
+  try {
+    localStorage.setItem(STORAGE_CHART, metric);
+  } catch {
+    // Storage may be disabled; the chart still switches for this session.
   }
 }
 
@@ -1116,6 +1139,90 @@ function settleConfirm(value) {
 /* Forecast rendering                                                  */
 /* ------------------------------------------------------------------ */
 
+const CHART_METRICS = {
+  temp: {
+    title: '7-day temperature',
+    empty: 'No temperature data to chart.',
+    loading: 'Loading temperature chart…',
+    note: 'The line is the mean of each source’s daily mean. The band spans the lowest low and highest high.',
+  },
+  precip: {
+    title: '7-day precipitation',
+    empty: 'No precipitation data to chart.',
+    loading: 'Loading precipitation chart…',
+    note: 'Bars show the mean daily total. The whisker spans the lowest and highest total reported by any service.',
+  },
+  wind: {
+    title: '7-day wind strength & direction',
+    empty: 'No wind data to chart.',
+    loading: 'Loading wind chart…',
+    note: 'The line is the mean daily wind speed. Arrows show the direction the wind blows from; the band spans the source range.',
+  },
+};
+
+function chartMeta(metric = state.chartMetric) {
+  return CHART_METRICS[metric] ?? CHART_METRICS.temp;
+}
+
+function chartBlock(day, metric) {
+  if (metric === 'precip') return day.precip ?? {};
+  if (metric === 'wind') return day.wind ?? {};
+  return day.temp ?? {};
+}
+
+function metricValue(day, metric) {
+  return chartBlock(day, metric).avg;
+}
+
+function renderChartLegend(metric = state.chartMetric) {
+  const item = (markerClass, text, children = []) =>
+    elem('span', { className: 'legend-item' }, [
+      elem('span', { className: markerClass, attrs: { 'aria-hidden': 'true' } }, children),
+      document.createTextNode(text),
+    ]);
+
+  if (metric === 'precip') {
+    dom.chartLegend.replaceChildren(
+      item('legend-line legend-bar', 'Daily total'),
+      item('legend-range', 'Source range'),
+    );
+  } else if (metric === 'wind') {
+    const arrow = svgEl('svg', { class: 'legend-arrow', 'aria-hidden': 'true', focusable: 'false' });
+    arrow.append(svgEl('use', { href: '#i-wind-arrow' }));
+    dom.chartLegend.replaceChildren(
+      item('legend-line', 'Daily mean'),
+      item('legend-band', 'Source range'),
+      elem('span', { className: 'legend-item' }, [arrow, document.createTextNode('Wind direction')]),
+    );
+  } else {
+    dom.chartLegend.replaceChildren(
+      item('legend-line', 'Average'),
+      item('legend-band', 'Low–high range'),
+    );
+  }
+}
+
+function setChartMetric(metric, { persist = true } = {}) {
+  if (!CHART_METRICS[metric]) return;
+  state.chartMetric = metric;
+  if (persist) saveChartMetric(metric);
+
+  const meta = chartMeta(metric);
+  dom.chartTitle.textContent = meta.title;
+  dom.chartNote.textContent = meta.note;
+  dom.tempChart.setAttribute('aria-label', `${meta.title} chart`);
+  for (const button of dom.chartTabs.querySelectorAll('button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.metric === metric));
+  }
+  renderChartLegend(metric);
+
+  if (state.forecast?.daily?.length) {
+    renderChart(state.forecast.daily, state.forecast.today, metric);
+  } else if (!state.loading) {
+    dom.tempChart.replaceChildren(elem('div', { className: 'chart-empty', text: meta.empty }));
+  }
+}
+
 function prepareSkeletons() {
   state.forecast = null;
   dom.dailyTable.hidden = false;
@@ -1127,7 +1234,7 @@ function prepareSkeletons() {
       return row;
     }),
   );
-  dom.tempChart.replaceChildren(elem('div', { className: 'chart-empty', text: 'Loading temperature chart…' }));
+  dom.tempChart.replaceChildren(elem('div', { className: 'chart-empty', text: chartMeta().loading }));
   dom.chartTooltip.hidden = true;
   dom.breakdownBody.replaceChildren();
   dom.breakdownSub.textContent = 'How each service shaped this forecast';
@@ -1183,7 +1290,7 @@ function showEmptyForecast(message) {
   dom.dailyBody.replaceChildren();
   dom.forecastEmpty.hidden = false;
   dom.forecastEmptyText.textContent = message;
-  dom.tempChart.replaceChildren(elem('div', { className: 'chart-empty', text: 'No temperature data to chart.' }));
+  dom.tempChart.replaceChildren(elem('div', { className: 'chart-empty', text: chartMeta().empty }));
   dom.chartTooltip.hidden = true;
   dom.statusLine.textContent = 'No forecast available';
   dom.updatedLine.textContent = '';
@@ -1301,7 +1408,7 @@ function svgEl(tag, attrs = {}) {
   return node;
 }
 
-function chartDomain(daily) {
+function tempChartDomain(daily) {
   const lows = daily.map((day) => day.temp.min).filter(isFiniteNumber);
   const highs = daily.map((day) => day.temp.max).filter(isFiniteNumber);
   let low = lows.length ? Math.min(...lows) : -5;
@@ -1315,21 +1422,79 @@ function chartDomain(daily) {
   const step = span <= 7 ? 1 : span <= 16 ? 2 : 5;
   low = Math.floor((low - 1) / step) * step;
   high = Math.ceil((high + 1) / step) * step;
-  return { low, high, step };
+  return { low, high, step, digits: 0 };
 }
 
-function showChartTooltip(node, day, x, y) {
+function niceChartTop(value, steps) {
+  const target = Math.max(0, value);
+  let step = steps[steps.length - 1];
+  for (const candidate of steps) {
+    if (target <= candidate * 5) {
+      step = candidate;
+      break;
+    }
+  }
+  return {
+    step,
+    high: Math.max(step, Math.ceil((target || step) / step) * step),
+    digits: step < 1 ? 1 : 0,
+  };
+}
+
+function chartDomain(daily, metric = state.chartMetric) {
+  if (metric === 'precip') {
+    const values = daily
+      .flatMap((day) => [day.precip?.avg, day.precip?.max])
+      .filter(isFiniteNumber);
+    const { high, step, digits } = niceChartTop(values.length ? Math.max(...values) : 1, [0.5, 1, 2, 5, 10, 20]);
+    return { low: 0, high, step, digits };
+  }
+  if (metric === 'wind') {
+    const values = daily
+      .flatMap((day) => [day.wind?.avg, day.wind?.min, day.wind?.max])
+      .filter(isFiniteNumber);
+    const { high, step, digits } = niceChartTop((values.length ? Math.max(...values) : 10) * 1.06, [2, 4, 5, 10, 20, 50]);
+    return { low: 0, high, step, digits };
+  }
+  return tempChartDomain(daily);
+}
+
+function showChartTooltip(node, day, x, y, metric = state.chartMetric) {
+  const block = chartBlock(day, metric);
   const weekday = WEEKDAY_LONG.format(dateObject(day.date));
-  dom.chartTooltip.replaceChildren(
-    elem('strong', { text: `${weekday}, ${dateLabel(day.date)}` }),
-    elem('div', {
-      className: 'tt-temp',
-      text: `Average ${formatValue(day.temp.avg, 0, '°')} · Range ${formatValue(day.temp.min, 0, '°')}–${formatValue(day.temp.max, 0, '°')}`,
-    }),
+  const rows = [elem('strong', { text: `${weekday}, ${dateLabel(day.date)}` })];
+
+  if (metric === 'precip') {
+    rows.push(
+      elem('div', {
+        className: 'tt-metric',
+        text: `Average ${formatValue(block.avg, 1, ' mm')} · Range ${formatValue(block.min, 1, ' mm')}–${formatValue(block.max, 1, ' mm')}`,
+      }),
+    );
+  } else if (metric === 'wind') {
+    rows.push(
+      elem('div', {
+        className: 'tt-metric',
+        text: `Average ${formatValue(block.avg, 0, ' km/h')} · Range ${formatValue(block.min, 0, ' km/h')}–${formatValue(block.max, 0, ' km/h')}`,
+      }),
+    );
+    const direction = windDirectionTitle(block);
+    if (direction) rows.push(elem('div', { className: 'tt-wind-dir', text: direction }));
+  } else {
+    rows.push(
+      elem('div', {
+        className: 'tt-metric',
+        text: `Average ${formatValue(block.avg, 0, '°')} · Range ${formatValue(block.min, 0, '°')}–${formatValue(block.max, 0, '°')}`,
+      }),
+    );
+  }
+
+  rows.push(
     elem('div', {
       text: `${day.sourceCount} ${day.sourceCount === 1 ? 'service' : 'services'} reporting`,
     }),
   );
+  dom.chartTooltip.replaceChildren(...rows);
   dom.chartTooltip.hidden = false;
 
   const svgRect = node.ownerSVGElement.getBoundingClientRect();
@@ -1341,12 +1506,25 @@ function showChartTooltip(node, day, x, y) {
   dom.chartTooltip.style.top = `${Math.max(py, 72)}px`;
 }
 
-function renderChart(daily, today) {
+function chartAriaValue(day, metric) {
+  const block = chartBlock(day, metric);
+  if (metric === 'precip') return `${WEEKDAY_SHORT.format(dateObject(day.date))} ${formatValue(block.avg, 1, ' millimetres')}`;
+  if (metric === 'wind') {
+    const direction = cardinalName(block.direction) ?? block.directionText;
+    const from = direction ? ` from the ${direction}` : '';
+    return `${WEEKDAY_SHORT.format(dateObject(day.date))} ${formatValue(block.avg, 0, ' kilometres per hour')}${from}`;
+  }
+  return `${WEEKDAY_SHORT.format(dateObject(day.date))} ${formatValue(block.avg, 0, ' degrees')}`;
+}
+
+
+function renderChart(daily, today, metric = state.chartMetric) {
   dom.tempChart.replaceChildren();
   dom.chartTooltip.hidden = true;
 
-  if (!daily.length) {
-    dom.tempChart.append(elem('div', { className: 'chart-empty', text: 'No temperature data to chart.' }));
+  const meta = chartMeta(metric);
+  if (!daily.length || !daily.some((day) => isFiniteNumber(metricValue(day, metric)))) {
+    dom.tempChart.append(elem('div', { className: 'chart-empty', text: meta.empty }));
     return;
   }
 
@@ -1360,12 +1538,12 @@ function renderChart(daily, today) {
     height: compact ? 250 : 268,
     top: 30,
     right: compact ? 12 : 20,
-    bottom: 48,
+    bottom: metric === 'wind' ? 72 : 48,
     left: compact ? 36 : 44,
   };
   chartMetrics = { width: dims.width, height: dims.height };
 
-  const { low, high, step } = chartDomain(daily);
+  const { low, high, step, digits } = chartDomain(daily, metric);
   const innerWidth = dims.width - dims.left - dims.right;
   const innerHeight = dims.height - dims.top - dims.bottom;
   const count = daily.length;
@@ -1376,9 +1554,7 @@ function renderChart(daily, today) {
   const svg = svgEl('svg', {
     viewBox: `0 0 ${dims.width} ${dims.height}`,
     role: 'img',
-    'aria-label': `Seven day temperature consensus: ${daily
-      .map((day) => `${WEEKDAY_SHORT.format(dateObject(day.date))} ${formatValue(day.temp.avg, 0, ' degrees')}`)
-      .join(', ')}`,
+    'aria-label': `${meta.title} consensus: ${daily.map((day) => chartAriaValue(day, metric)).join(', ')}`,
     preserveAspectRatio: 'xMidYMid meet',
   });
 
@@ -1397,6 +1573,17 @@ function renderChart(daily, today) {
   defs.append(gradient);
   svg.append(defs);
 
+  if (metric !== 'temp') {
+    const unit = svgEl('text', {
+      class: 'chart-unit',
+      x: dims.left,
+      y: dims.top - 10,
+      'text-anchor': 'start',
+    });
+    unit.textContent = metric === 'precip' ? 'mm' : 'km/h';
+    svg.append(unit);
+  }
+
   for (let value = low; value <= high + 0.001; value += step) {
     const y = yFor(value);
     svg.append(
@@ -1414,7 +1601,7 @@ function renderChart(daily, today) {
       y: y + 3.5,
       'text-anchor': 'end',
     });
-    label.textContent = `${value}°`;
+    label.textContent = metric === 'temp' ? `${formatNumber(value, 0)}°` : formatNumber(value, digits);
     svg.append(label);
   }
 
@@ -1432,40 +1619,98 @@ function renderChart(daily, today) {
     );
   }
 
-  if (daily.every((day) => isFiniteNumber(day.temp.min) && isFiniteNumber(day.temp.max))) {
-    const topPoints = daily.map((day, index) => `${xFor(index).toFixed(2)} ${yFor(day.temp.max).toFixed(2)}`);
-    const bottomPoints = daily
-      .map((day, index) => ({ day, index }))
-      .reverse()
-      .map(({ day, index }) => `${xFor(index).toFixed(2)} ${yFor(day.temp.min).toFixed(2)}`);
-    const bandPath = `M${topPoints.join('L')}L${bottomPoints.join('L')}Z`;
-    svg.append(svgEl('path', { class: 'chart-band', d: bandPath }));
-  }
+  const slotWidth = innerWidth / Math.max(count, 1);
 
-  const averagePoints = daily
-    .map((day, index) => ({ day, index, x: xFor(index), y: yFor(day.temp.avg) }))
-    .filter((point) => isFiniteNumber(point.day.temp.avg));
+  if (metric === 'precip') {
+    const barWidth = Math.max(8, Math.min(compact ? 18 : 28, slotWidth * 0.52));
+    daily.forEach((day, index) => {
+      const block = chartBlock(day, metric);
+      if (!isFiniteNumber(block.avg)) return;
+      const x = xFor(index);
+      const y = yFor(block.avg);
+      const baseline = yFor(0);
+      svg.append(
+        svgEl('rect', {
+          class: 'chart-bar',
+          x: x - barWidth / 2,
+          y,
+          width: barWidth,
+          height: Math.max(1, baseline - y),
+          rx: Math.min(5, barWidth / 3),
+        }),
+      );
+      if (isFiniteNumber(block.min) && isFiniteNumber(block.max)) {
+        const top = yFor(block.max);
+        const bottom = yFor(block.min);
+        const cap = Math.min(5, barWidth / 3);
+        svg.append(
+          svgEl('line', { class: 'chart-bar-range', x1: x, y1: top, x2: x, y2: bottom }),
+          svgEl('line', { class: 'chart-bar-range', x1: x - cap, y1: top, x2: x + cap, y2: top }),
+          svgEl('line', { class: 'chart-bar-range', x1: x - cap, y1: bottom, x2: x + cap, y2: bottom }),
+        );
+      }
+    });
+  } else {
+    if (daily.every((day) => isFiniteNumber(chartBlock(day, metric).min) && isFiniteNumber(chartBlock(day, metric).max))) {
+      const topPoints = daily.map(
+        (day, index) => `${xFor(index).toFixed(2)} ${yFor(chartBlock(day, metric).max).toFixed(2)}`,
+      );
+      const bottomPoints = daily
+        .map((day, index) => ({ day, index }))
+        .reverse()
+        .map(({ day, index }) => `${xFor(index).toFixed(2)} ${yFor(chartBlock(day, metric).min).toFixed(2)}`);
+      const bandPath = `M${topPoints.join('L')}L${bottomPoints.join('L')}Z`;
+      svg.append(svgEl('path', { class: 'chart-band', d: bandPath }));
+    }
 
-  if (averagePoints.length) {
-    const path = averagePoints.map((point) => `${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join('L');
-    svg.append(svgEl('path', { class: 'chart-line', d: `M${path}` }));
-    for (const point of averagePoints) {
-      svg.append(svgEl('circle', { class: 'chart-dot', cx: point.x, cy: point.y, r: 4.2 }));
+    const averagePoints = daily
+      .map((day, index) => ({ day, index, x: xFor(index), y: yFor(metricValue(day, metric)) }))
+      .filter((point) => isFiniteNumber(metricValue(point.day, metric)));
+
+    if (averagePoints.length) {
+      const path = averagePoints.map((point) => `${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join('L');
+      svg.append(svgEl('path', { class: 'chart-line', d: `M${path}` }));
+      for (const point of averagePoints) {
+        svg.append(svgEl('circle', { class: 'chart-dot', cx: point.x, cy: point.y, r: 4.2 }));
+      }
     }
   }
 
-  const slotWidth = innerWidth / Math.max(count, 1);
   daily.forEach((day, index) => {
+    const block = chartBlock(day, metric);
     const x = xFor(index);
+    if (metric === 'wind' && isFiniteNumber(block.direction)) {
+      const arrowY = dims.height - dims.bottom + 13;
+      const group = svgEl('g', { class: 'chart-wind-direction', transform: `translate(${x.toFixed(2)} ${arrowY})` });
+      group.append(
+        svgEl('path', {
+          class: 'chart-wind-arrow',
+          d: 'M12 2.6 20 21l-8-4.3L4 21Z',
+          transform: `rotate(${windArrowRotation(block.direction)}) scale(0.54) translate(-12 -12)`,
+        }),
+      );
+      svg.append(group);
+
+      const point = svgEl('text', {
+        class: 'chart-wind-label',
+        x,
+        y: arrowY + 17,
+        'text-anchor': 'middle',
+      });
+      point.textContent = block.directionText ?? cardinalName(block.direction) ?? '–';
+      svg.append(point);
+    }
+
+    const anchorValue = isFiniteNumber(block.avg) ? block.avg : (high + low) / 2;
     const area = svgEl('rect', {
       class: 'chart-hover-area',
       x: x - slotWidth / 2,
       y: dims.top,
       width: slotWidth,
       height: innerHeight,
-      'aria-label': `${longDateLabel(day.date)}, average ${formatValue(day.temp.avg, 0, ' degrees')}`,
+      'aria-label': `${longDateLabel(day.date)}, ${chartAriaValue(day, metric)}`,
     });
-    const show = () => showChartTooltip(area, day, x, yFor(day.temp.avg) - 10);
+    const show = () => showChartTooltip(area, day, x, yFor(anchorValue) - 10, metric);
     area.addEventListener('pointerenter', (event) => {
       if (event.pointerType === 'mouse') show();
     });
@@ -1476,10 +1721,11 @@ function renderChart(daily, today) {
     });
     svg.append(area);
 
+    const labelBase = dims.height - dims.bottom;
     const dayLabel = svgEl('text', {
       class: index === todayIndex ? 'chart-day-label' : 'chart-date-label',
       x,
-      y: dims.height - dims.bottom + 20,
+      y: labelBase + (metric === 'wind' ? 44 : 20),
       'text-anchor': 'middle',
     });
     dayLabel.textContent = day.date === today ? 'Today' : WEEKDAY_SHORT.format(dateObject(day.date));
@@ -1488,7 +1734,7 @@ function renderChart(daily, today) {
     const dateLabelNode = svgEl('text', {
       class: 'chart-date-label',
       x,
-      y: dims.height - dims.bottom + 35,
+      y: labelBase + (metric === 'wind' ? 59 : 35),
       'text-anchor': 'middle',
     });
     dateLabelNode.textContent = dateLabel(day.date);
@@ -1768,6 +2014,10 @@ function wireEvents() {
     setTheme(dom.html.dataset.theme === 'dark' ? 'light' : 'dark', { persist: true });
   });
 
+  for (const button of dom.chartTabs.querySelectorAll('button')) {
+    button.addEventListener('click', () => setChartMetric(button.dataset.metric));
+  }
+
   document.addEventListener('pointerdown', (event) => {
     if (!dom.chartTooltip.hidden && !event.target.closest?.('.chart-hover-area')) {
       dom.chartTooltip.hidden = true;
@@ -1855,9 +2105,10 @@ function wireEvents() {
 async function boot() {
   setTheme(dom.html.dataset.theme || preferredTheme());
   wireEvents();
+  setChartMetric(state.chartMetric, { persist: false });
   updateCatalogNote();
   renderLocationHeader();
-  dom.tempChart.append(elem('div', { className: 'chart-empty', text: 'Loading temperature chart…' }));
+  dom.tempChart.append(elem('div', { className: 'chart-empty', text: chartMeta().loading }));
 
   // Sources and the catalog do not depend on the position, so they load alongside it.
   const sourcesReady = loadSources({ quiet: true });
