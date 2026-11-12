@@ -1,6 +1,7 @@
 import { fetchJson } from '../http.js';
 import { dateKeyInZone } from '../time.js';
 import { mean, round } from '../numbers.js';
+import { meanDirection } from '../wind.js';
 
 export async function fetchMetNo({ lat, lon, timezone = 'UTC' }) {
   const params = new URLSearchParams({
@@ -22,7 +23,7 @@ export async function fetchMetNo({ lat, lon, timezone = 'UTC' }) {
     const date = dateKeyInZone(entry.time, timezone);
     if (!date) continue;
     if (!groups.has(date)) {
-      groups.set(date, { temp: [], humidity: [], wind: [], precip: 0 });
+      groups.set(date, { temp: [], humidity: [], wind: [], windDir: [], precip: 0 });
     }
     const group = groups.get(date);
     const details = entry.data?.instant?.details ?? {};
@@ -30,6 +31,9 @@ export async function fetchMetNo({ lat, lon, timezone = 'UTC' }) {
     if (Number.isFinite(details.air_temperature)) group.temp.push(details.air_temperature);
     if (Number.isFinite(details.relative_humidity)) group.humidity.push(details.relative_humidity);
     if (Number.isFinite(details.wind_speed)) group.wind.push(details.wind_speed);
+    if (Number.isFinite(details.wind_from_direction)) {
+      group.windDir.push(details.wind_from_direction);
+    }
 
     let amount = entry.data?.next_1_hours?.details?.precipitation_amount;
     if (!Number.isFinite(amount)) {
@@ -48,6 +52,7 @@ export async function fetchMetNo({ lat, lon, timezone = 'UTC' }) {
       tMean: round(mean(group.temp), 1),
       windMean: round(mean(group.wind) * 3.6, 1),
       windMax: round(Math.max(...group.wind) * 3.6, 1),
+      windDir: round(meanDirection(group.windDir), 0),
       humidity: round(mean(group.humidity), 0),
       precip: round(group.precip, 1),
     }))

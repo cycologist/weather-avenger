@@ -1,5 +1,6 @@
 import { fetchJson } from '../http.js';
 import { mean, round } from '../numbers.js';
+import { meanDirection } from '../wind.js';
 
 export async function fetchWttr({ lat, lon }) {
   const params = new URLSearchParams({ format: 'j1' });
@@ -24,6 +25,7 @@ export async function fetchWttr({ lat, lon }) {
       const hourly = Array.isArray(day.hourly) ? day.hourly : [];
       const humidity = hourly.map((hour) => Number(hour.humidity)).filter(Number.isFinite);
       const wind = hourly.map((hour) => Number(hour.windspeedKmph)).filter(Number.isFinite);
+      const windDir = hourly.map((hour) => Number(hour.winddirDegree)).filter(Number.isFinite);
       const precip = hourly.map((hour) => Number(hour.precipMM)).filter(Number.isFinite);
 
       return {
@@ -33,6 +35,7 @@ export async function fetchWttr({ lat, lon }) {
         tMean: round(Number.isFinite(Number(day.avgtempC)) ? Number(day.avgtempC) : (tMin + tMax) / 2, 1),
         windMean: round(mean(wind), 1),
         windMax: round(wind.length ? Math.max(...wind) : null, 1),
+        windDir: round(meanDirection(windDir), 0),
         humidity: round(mean(humidity), 0),
         precip: round(precip.reduce((total, value) => total + value, 0), 1),
       };

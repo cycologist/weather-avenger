@@ -1,6 +1,7 @@
 import { fetchJson } from '../http.js';
 import { dateKeyInZone } from '../time.js';
 import { mean, round } from '../numbers.js';
+import { compassToDegrees, meanDirection } from '../wind.js';
 
 // 7Timer publishes wind force bands (1–8) and rain-rate bands (0–9).
 // These are the band midpoints converted to km/h and mm/hour.
@@ -35,7 +36,7 @@ export async function fetchSevenTimer({ lat, lon, timezone = 'UTC' }) {
     const date = dateKeyInZone(timestamp, timezone);
     if (!date) continue;
     if (!groups.has(date)) {
-      groups.set(date, { temp: [], humidity: [], wind: [], precip: 0 });
+      groups.set(date, { temp: [], humidity: [], wind: [], windDir: [], precip: 0 });
     }
     const group = groups.get(date);
     if (Number.isFinite(entry.temp2m)) group.temp.push(entry.temp2m);
@@ -45,6 +46,9 @@ export async function fetchSevenTimer({ lat, lon, timezone = 'UTC' }) {
 
     const windBand = Number(entry.wind10m?.speed);
     if (Number.isFinite(windBand)) group.wind.push(WIND_BAND_KMH[Math.max(0, Math.min(8, windBand))]);
+
+    const windDir = compassToDegrees(entry.wind10m?.direction);
+    if (Number.isFinite(windDir)) group.windDir.push(windDir);
 
     const rainBand = Number(entry.prec_amount);
     if (Number.isFinite(rainBand)) {
@@ -61,6 +65,7 @@ export async function fetchSevenTimer({ lat, lon, timezone = 'UTC' }) {
       tMean: round(mean(group.temp), 1),
       windMean: round(mean(group.wind), 1),
       windMax: round(group.wind.length ? Math.max(...group.wind) : null, 1),
+      windDir: round(meanDirection(group.windDir), 0),
       humidity: round(mean(group.humidity), 0),
       precip: round(group.precip, 1),
     }))

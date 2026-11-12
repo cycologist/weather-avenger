@@ -67,6 +67,9 @@
         <path d="M3 12h15a3 3 0 1 1-3 3" />
         <path d="M3 16h7" />
       </symbol>
+      <symbol id="i-wind-arrow" viewBox="0 0 24 24">
+        <path d="M12 2.6 20 21l-8-4.3L4 21Z" />
+      </symbol>
       <symbol id="i-droplet" viewBox="0 0 24 24">
         <path d="M12 2.8 6.8 8a7.4 7.4 0 1 0 10.4 0L12 2.8Z" />
       </symbol>
@@ -177,8 +180,8 @@
           <button class="location-chip" id="location-chip" type="button" aria-haspopup="dialog">
             <span class="location-icon"><svg class="icon"><use href="#i-pin" /></svg></span>
             <span class="location-copy">
-              <strong id="place-name">Berlin, Germany</strong>
-              <span id="place-sub">52.52°N · 13.41°E</span>
+              <strong id="place-name">Locating you…</strong>
+              <span id="place-sub">Waiting for your position</span>
             </span>
             <span class="location-change">Change</span>
           </button>
@@ -230,6 +233,13 @@
                   <span class="stat-label">Wind</span>
                 </div>
                 <p class="stat-value"><strong id="stat-wind">–</strong><span>km/h</span></p>
+                <p class="stat-dir" id="stat-wind-dir" hidden>
+                  <svg class="wind-arrow" id="stat-wind-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <use href="#i-wind-arrow" />
+                  </svg>
+                  <span class="stat-dir-point" id="stat-wind-dir-point">–</span>
+                  <span class="stat-dir-deg" id="stat-wind-dir-deg"></span>
+                </p>
                 <p class="stat-range" id="stat-wind-range">daily mean</p>
                 <div class="meter"><span id="stat-wind-bar"></span></div>
               </article>
@@ -374,8 +384,8 @@
 
       <div class="location-foot">
         <div class="selected-place">
-          <p class="selected-name" id="selected-name">Berlin, Germany</p>
-          <p class="selected-coords" id="selected-coords">52.52°N · 13.41°E · Europe/Berlin</p>
+          <p class="selected-name" id="selected-name">No place selected</p>
+          <p class="selected-coords" id="selected-coords">Search or tap the map to pick a location</p>
         </div>
         <button class="btn primary" id="apply-location" type="button">
           <svg class="icon"><use href="#i-check" /></svg>

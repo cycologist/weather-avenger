@@ -1,5 +1,6 @@
 import { createWorldMap } from '/map.js';
 import { installLocalApi } from './local-api.js';
+import { cardinalName } from './lib/wind.js';
 
 // The Android shell has no Node server; ??local=1 enables the same in-app data
 // layer in a desktop browser for testing.
@@ -18,8 +19,12 @@ const STORAGE_LOCATION = 'avercast-location';
 const STORAGE_THEME = 'avercast-theme';
 const DAYS = 7;
 
+// Declared before `state` because storedLocation() uses them during module init.
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+
 const state = {
-  location: loadLocation(),
+  location: storedLocation(),
   sources: [],
   sourcesLoaded: false,
   catalog: null,
@@ -68,6 +73,10 @@ const dom = {
   confidenceText: $('confidence-text'),
   heroSources: $('hero-sources'),
   statWind: $('stat-wind'),
+  statWindDir: $('stat-wind-dir'),
+  statWindArrow: $('stat-wind-arrow'),
+  statWindDirPoint: $('stat-wind-dir-point'),
+  statWindDirDeg: $('stat-wind-dir-deg'),
   statWindRange: $('stat-wind-range'),
   statWindBar: $('stat-wind-bar'),
   statHumidity: $('stat-humidity'),
@@ -115,13 +124,10 @@ const dom = {
 /* Small utilities                                                     */
 /* ------------------------------------------------------------------ */
 
-const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
-const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
-
-function loadLocation() {
+function storedLocation() {
   try {
     const raw = localStorage.getItem(STORAGE_LOCATION);
-    if (!raw) return { ...DEFAULT_LOCATION };
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (isFiniteNumber(parsed?.lat) && isFiniteNumber(parsed?.lon)) {
       return {
@@ -132,9 +138,9 @@ function loadLocation() {
       };
     }
   } catch {
-    // Ignore unreadable storage and fall back to Berlin.
+    // Unreadable storage means no saved place; the app then asks for a position.
   }
-  return { ...DEFAULT_LOCATION };
+  return null;
 }
 
 function saveLocation(location) {
@@ -363,7 +369,15 @@ function toast(message, tone = 'info', timeout = 4600) {
 /* ------------------------------------------------------------------ */
 
 function renderLocationHeader() {
-  const { lat, lon, name, label } = state.location;
+  const location = state.location;
+  if (!location) {
+    dom.placeName.textContent = 'Locating you…';
+    dom.placeSub.textContent = 'Waiting for your position';
+    dom.locationChip.removeAttribute('title');
+    return;
+  }
+
+  const { lat, lon, name, label } = location;
   dom.placeName.textContent = name || label || 'Pinned location';
   dom.placeSub.textContent = formatCoords(lat, lon);
   dom.locationChip.setAttribute('title', `${label || name || 'Selected location'} · ${formatCoords(lat, lon)}`);
@@ -854,7 +868,7 @@ async function reversePending(lat, lon) {
 
 function openLocationDialog() {
   closeSidebar();
-  state.pending = { ...state.location };
+  state.pending = { ...(state.location ?? DEFAULT_LOCATION) };
   dom.searchResults.hidden = true;
   dom.searchResults.replaceChildren();
   dom.placeSearch.value = '';
@@ -866,22 +880,30 @@ function openLocationDialog() {
   updateSelectedPlace();
 }
 
+function applyLocation(location, message) {
+  state.location = location;
+  saveLocation(location);
+  renderLocationHeader();
+  prepareSkeletons();
+  loadForecast();
+  if (message) toast(message, 'success');
+}
+
 function applyPendingLocation() {
   const pending = state.pending;
   if (!pending) return;
   const label = pending.label || pending.name || 'Pinned location';
-  state.location = {
-    lat: pending.lat,
-    lon: pending.lon,
-    name: pending.name || label.split(',')[0],
-    label,
-  };
-  saveLocation(state.location);
-  renderLocationHeader();
+  const name = pending.name || label.split(',')[0];
   if (dom.locationDialog.open) dom.locationDialog.close();
-  prepareSkeletons();
-  loadForecast();
-  toast(`Forecast location set to ${state.location.name}.`, 'success');
+  applyLocation(
+    {
+      lat: pending.lat,
+      lon: pending.lon,
+      name,
+      label,
+    },
+    `Forecast location set to ${name}.`,
+  );
 }
 
 function geolocationError(error) {
@@ -891,7 +913,7 @@ function geolocationError(error) {
   return error?.message || 'Could not determine your location.';
 }
 
-function getCurrentPosition() {
+function getCurrentPosition({ timeout = 12000, maximumAge = 5 * 60 * 1000 } = {}) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error('This browser does not expose a location.'));
@@ -900,9 +922,62 @@ function getCurrentPosition() {
     navigator.geolocation.getCurrentPosition(
       (position) => resolve(position),
       (error) => reject(error),
-      { enableHighAccuracy: false, timeout: 12000, maximumAge: 5 * 60 * 1000 },
+      { enableHighAccuracy: false, timeout, maximumAge },
     );
   });
+}
+
+async function reversePlace(lat, lon) {
+  try {
+    const data = await api(`/api/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
+    return data.place ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function placeFromCoords(lat, lon, place) {
+  return {
+    lat,
+    lon,
+    name: place?.name || 'My location',
+    label: place?.label || 'My location',
+  };
+}
+
+/**
+ * First run only: ask for the device position instead of assuming Berlin.
+ * Falls back to Berlin when location is unavailable or denied, and never
+ * overrides a place the user already picked.
+ */
+async function resolveInitialLocation() {
+  if (state.location) {
+    return state.location;
+  }
+
+  prepareSkeletons();
+  dom.statusLine.textContent = 'Finding your location…';
+
+  let location = null;
+  try {
+    // A longer timeout leaves room for the WebView/browser permission prompt.
+    const position = await getCurrentPosition({ timeout: 15000, maximumAge: 10 * 60 * 1000 });
+    const { latitude, longitude } = position.coords;
+    const place = await reversePlace(latitude, longitude);
+    location = placeFromCoords(latitude, longitude, place);
+    if (place?.label) toast(`Starting near ${place.label}.`, 'success');
+  } catch (error) {
+    location = { ...DEFAULT_LOCATION };
+    toast(
+      `${geolocationError(error)} Berlin is shown as a starting point; use the location picker to change it.`,
+      'warning',
+      7000,
+    );
+  }
+
+  state.location = location;
+  saveLocation(location);
+  return location;
 }
 
 async function locateInDialog() {
@@ -927,26 +1002,12 @@ async function locateAndApply() {
   toast('Finding your current location…', 'info', 2600);
   try {
     const position = await getCurrentPosition();
-    const lat = position.coords.latitude;
-    const lon = position.coords.longitude;
-    let place = null;
-    try {
-      const data = await api(`/api/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
-      place = data.place ?? null;
-    } catch {
-      place = null;
-    }
-    state.location = {
-      lat,
-      lon,
-      name: place?.name || 'My location',
-      label: place?.label || 'My location',
-    };
-    saveLocation(state.location);
-    renderLocationHeader();
-    prepareSkeletons();
-    loadForecast();
-    toast(place?.label ? `Using ${place.label}.` : 'Using your current location.', 'success');
+    const { latitude, longitude } = position.coords;
+    const place = await reversePlace(latitude, longitude);
+    applyLocation(
+      placeFromCoords(latitude, longitude, place),
+      place?.label ? `Using ${place.label}.` : 'Using your current location.',
+    );
   } catch (error) {
     toast(geolocationError(error), 'error', 6000);
   } finally {
@@ -1078,6 +1139,12 @@ function prepareSkeletons() {
 
 function resetStats() {
   dom.statWind.textContent = '–';
+  dom.statWindDir.hidden = true;
+  dom.statWindDirPoint.textContent = '–';
+  dom.statWindDirDeg.textContent = '';
+  dom.statWindDir.removeAttribute('title');
+  dom.statWindDir.removeAttribute('aria-label');
+  dom.statWindArrow.style.transform = '';
   dom.statHumidity.textContent = '–';
   dom.statPrecip.textContent = '–';
   dom.statWind.classList.add('is-empty');
@@ -1126,6 +1193,49 @@ function heroDay(daily, today) {
   return daily.find((day) => day.date === today) ?? daily[0] ?? null;
 }
 
+function windArrowRotation(degrees) {
+  // Adapters report the direction the wind blows *from*; the arrow points downwind.
+  return isFiniteNumber(degrees) ? (Math.round(degrees) + 180) % 360 : 0;
+}
+
+function windArrowNode(degrees, className = 'wind-arrow') {
+  const arrow = svgEl('svg', { class: className, 'aria-hidden': 'true', focusable: 'false' });
+  arrow.append(svgEl('use', { href: '#i-wind-arrow' }));
+  arrow.style.transform = `rotate(${windArrowRotation(degrees)}deg)`;
+  return arrow;
+}
+
+function windDirectionTitle(wind) {
+  if (!isFiniteNumber(wind?.direction)) return null;
+  const degrees = Math.round(wind.direction);
+  const name = cardinalName(wind.direction) ?? wind.directionText;
+  const spread =
+    wind.directionCount > 1 && isFiniteNumber(wind.directionSpread)
+      ? ` Services disagree by up to ${Math.round(wind.directionSpread)}°.`
+      : '';
+  return `Wind from the ${name} (${degrees}°).${spread}`;
+}
+
+function renderWindDirection(wind) {
+  const hasDirection = isFiniteNumber(wind?.direction) && Boolean(wind.directionText);
+  dom.statWindDir.hidden = !hasDirection;
+  if (!hasDirection) {
+    dom.statWindDirPoint.textContent = '–';
+    dom.statWindDirDeg.textContent = '';
+    dom.statWindDir.removeAttribute('title');
+    dom.statWindDir.removeAttribute('aria-label');
+    dom.statWindArrow.style.transform = '';
+    return;
+  }
+
+  dom.statWindDirPoint.textContent = wind.directionText;
+  dom.statWindDirDeg.textContent = ` · ${Math.round(wind.direction)}°`;
+  dom.statWindArrow.style.transform = `rotate(${windArrowRotation(wind.direction)}deg)`;
+  const title = windDirectionTitle(wind);
+  dom.statWindDir.title = title;
+  dom.statWindDir.setAttribute('aria-label', title);
+}
+
 function renderHero(day, forecast) {
   if (!day) {
     resetHero('No forecast data for this location.');
@@ -1166,6 +1276,7 @@ function renderHero(day, forecast) {
   dom.statWind.classList.toggle('is-empty', !isFiniteNumber(wind.avg));
   dom.statWindRange.textContent = rangeText(wind, { suffix: 'km/h' });
   setMeter(dom.statWindBar, wind.avg, 70);
+  renderWindDirection(wind);
 
   const humidity = day.humidity;
   dom.statHumidity.textContent = formatNumber(humidity.avg, 0);
@@ -1434,15 +1545,34 @@ function renderDailyTable(daily, today) {
     }
     const tempCell = elem('td', { className: 'temp-cell' }, [tempMain, tempBar]);
 
+    const windMeta = elem('div', { className: 'metric-wind' });
+    if (isFiniteNumber(day.wind.direction) && day.wind.directionText) {
+      const title = windDirectionTitle(day.wind);
+      windMeta.append(
+        windArrowNode(day.wind.direction),
+        elem(
+          'span',
+          {
+            className: 'metric-dir',
+            text: day.wind.directionText,
+            attrs: title ? { title } : {},
+          },
+        ),
+      );
+    }
+    windMeta.append(
+      elem('span', {
+        className: 'metric-range',
+        text: `${formatNumber(day.wind.min, 0)}–${formatNumber(day.wind.max, 0)}`,
+      }),
+    );
+
     const windCell = elem('td', { className: 'metric-cell' }, [
       elem('div', { className: 'metric-main' }, [
         document.createTextNode(formatNumber(day.wind.avg, 0)),
         elem('small', { text: 'km/h' }),
       ]),
-      elem('div', {
-        className: 'metric-range',
-        text: `${formatNumber(day.wind.min, 0)}–${formatNumber(day.wind.max, 0)}`,
-      }),
+      windMeta,
     ]);
 
     const humidityCell = elem('td', { className: 'metric-cell' }, [
@@ -1724,12 +1854,19 @@ function wireEvents() {
 
 async function boot() {
   setTheme(dom.html.dataset.theme || preferredTheme());
-  renderLocationHeader();
   wireEvents();
   updateCatalogNote();
+  renderLocationHeader();
   dom.tempChart.append(elem('div', { className: 'chart-empty', text: 'Loading temperature chart…' }));
-  await loadSources({ quiet: true });
+
+  // Sources and the catalog do not depend on the position, so they load alongside it.
+  const sourcesReady = loadSources({ quiet: true });
   loadCatalog({ quiet: true });
+
+  await resolveInitialLocation();
+  renderLocationHeader();
+
+  await sourcesReady;
   loadForecast();
 }
 

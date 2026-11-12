@@ -21,7 +21,7 @@ npm run dev
 
 ## What it does
 
-- **Location** — world map with pan/zoom and click-to-pick, place search, and browser geolocation. The last location and theme are kept in `localStorage`. Berlin is the starting point.
+- **Location** — world map with pan/zoom and click-to-pick, place search, and browser geolocation. On first launch the app asks for your position and starts there; if you decline, Berlin is used as a fallback. A place you pick is remembered in `localStorage`, together with the theme.
 - **Weather services menu** — a source list with enable/disable switches and delete confirmation. Add more services from a scanned catalog.
 - **Scraped catalog** — on startup the server reads the Weather section of the [public-apis](https://github.com/public-apis/public-apis) README and keeps the result for 24 hours. Supported services are matched by host and name. The *All scanned* tab shows every entry found, including services that have no adapter yet. If the scrape fails, a bundled list is used.
 - **Consensus forecast** — each enabled service counts once per day. Temperature and the other values are aggregated per calendar day in the location's timezone.
@@ -45,11 +45,11 @@ ECMWF and ICON are separate catalog entries that can be added, so their model ou
 For every day, across the services that returned a value:
 
 - **Temperature** — the average is the mean of each model's daily mean (`(low + high) / 2`). The low is the lowest daily low reported, and the high is the highest daily high. The "spread" shown in the hero card is the difference between the warmest and coolest model daily mean.
-- **Wind** — average of daily mean wind speeds, with the lowest and highest daily mean across services.
+- **Wind** — average of daily mean wind speeds, with the lowest and highest daily mean across services. The direction is the circular mean of each service's daily mean bearing, so 350° and 10° average to 0° rather than 180°; it is shown as a 16-point compass point. The arrow points where the wind is blowing to, while the label and tooltip give the direction it comes from. The spread is the widest deviation of any service from that mean, and services without a bearing are skipped for the direction only.
 - **Humidity** — average of daily mean relative humidity (daily values are averaged from hourly data where available).
 - **Precipitation** — average of daily totals, with the lowest and highest daily total.
 
-Missing values are ignored for that metric; a service is never invented as zero. Days without any service are dropped.
+Missing values are ignored for that metric; a service is never invented as zero. Days without any service are dropped. Wind bearings are circular values and are averaged with unit vectors, not arithmetic means.
 
 ## API
 
@@ -67,6 +67,8 @@ Missing values are ignored for that metric; a service is never invented as zero.
 | `GET /api/reverse?lat=38.72&lon=-9.15` | Reverse geocoding (BigDataCloud, then Nominatim) |
 
 Forecasts are cached for 5 minutes, individual source responses for 15 minutes, and timezone lookups for 24 hours.
+
+Each `daily` entry contains `wind: { avg, min, max, direction, directionText, directionSpread, directionCount }`, where `direction` is the meteorological bearing in degrees (0 = north, the direction the wind comes from) and `directionText` is its 16-point compass label. `directionSpread` is the widest deviation between services, and `directionCount` is how many services reported a bearing.
 
 ## Configuration
 
@@ -99,7 +101,8 @@ public/
   styles.css        Light/dark theme and responsive layout
   local-api.js      In-app /api implementation for the Android build
   lib/              Shared forecast engine: adapters, aggregation,
-                    geocoding, timezone, HTTP helpers and catalog parser
+                    wind bearings, geocoding, timezone, HTTP helpers and
+                    catalog parser
   data/             Natural Earth world.geojson
 android/            Capacitor Android project
 test/               node:test tests for aggregation and scraping
@@ -113,7 +116,7 @@ The frontend is plain HTML, CSS and ES modules; there is no build step. Express 
 npm test
 ```
 
-The tests cover the aggregation rules (including disagreement, missing values and date filtering) and the public-apis Markdown scraper.
+The tests cover the aggregation rules (including disagreement, missing values, date filtering and circular wind directions), the wind bearing helpers, and the public-apis Markdown scraper.
 
 ## Android app
 

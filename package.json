@@ -1,6 +1,6 @@
 {
   "name": "avercast",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Multi-source weather forecast consensus app",
   "main": "index.js",
   "scripts": {

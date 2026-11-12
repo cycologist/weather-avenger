@@ -1,5 +1,6 @@
 import { max, mean, min, round } from './numbers.js';
 import { todayInZone } from './time.js';
+import { cardinal, directionSpread, meanDirection, normalizeDegrees } from './wind.js';
 
 function block(values, digits) {
   return {
@@ -25,6 +26,22 @@ function tempBlock(days) {
   };
 }
 
+function windBlock(days) {
+  const directions = days.map((day) => day.windDir).filter(Number.isFinite);
+  const direction = meanDirection(directions);
+
+  return {
+    ...block(
+      days.map((day) => day.windMean),
+      1,
+    ),
+    direction: normalizeDegrees(round(direction, 0)),
+    directionText: cardinal(direction),
+    directionSpread: round(directionSpread(directions), 0),
+    directionCount: directions.length,
+  };
+}
+
 export function aggregateForecast(results, { timezone = 'UTC', days = 7 } = {}) {
   const byDate = new Map();
 
@@ -44,10 +61,7 @@ export function aggregateForecast(results, { timezone = 'UTC', days = 7 } = {}) 
     const entries = byDate.get(date) ?? [];
     const sourceDays = entries.map((entry) => entry.day);
     const temp = tempBlock(sourceDays);
-    const wind = block(
-      sourceDays.map((day) => day.windMean),
-      1,
-    );
+    const wind = windBlock(sourceDays);
     const humidity = block(
       sourceDays.map((day) => day.humidity),
       0,

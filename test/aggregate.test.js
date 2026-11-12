@@ -9,13 +9,14 @@ function dateAfter(date, offset) {
   return value.toISOString().slice(0, 10);
 }
 
-function day(date, { tMin, tMax, windMean, humidity, precip }) {
+function day(date, { tMin, tMax, windMean, windDir, humidity, precip }) {
   return {
     date,
     tMin,
     tMax,
     tMean: Math.round(((tMin + tMax) / 2) * 10) / 10,
     windMean,
+    windDir,
     humidity,
     precip,
   };
@@ -60,7 +61,15 @@ test('aggregates temperature as mean of means with lowest low and highest high',
 
   const first = result.daily[0];
   assert.deepEqual(first.temp, { avg: 7, min: 2, max: 12, disagreement: 2 });
-  assert.deepEqual(first.wind, { avg: 15, min: 10, max: 20 });
+  assert.deepEqual(first.wind, {
+    avg: 15,
+    min: 10,
+    max: 20,
+    direction: null,
+    directionText: null,
+    directionSpread: null,
+    directionCount: 0,
+  });
   assert.deepEqual(first.humidity, { avg: 85, min: 80, max: 90 });
   assert.deepEqual(first.precip, { avg: 1.6, min: 1.2, max: 2 });
   assert.equal(first.sourceCount, 2);
@@ -120,4 +129,57 @@ test('a single source has no disagreement value', () => {
 
   assert.equal(result.daily[0].temp.avg, 10);
   assert.equal(result.daily[0].temp.disagreement, null);
+});
+
+test('averages wind bearings around the compass and reports the spread', () => {
+  const today = todayInZone('UTC');
+  const days = (windDir) => [
+    day(today, { tMin: 5, tMax: 15, windMean: 10, windDir, humidity: 50, precip: 0 }),
+  ];
+  const result = aggregateForecast(
+    [source('a', days(350)), source('b', days(10))],
+    { timezone: 'UTC', days: 1 },
+  );
+
+  const wind = result.daily[0].wind;
+  assert.equal(wind.direction, 0);
+  assert.equal(wind.directionText, 'N');
+  assert.equal(wind.directionSpread, 10);
+  assert.equal(wind.directionCount, 2);
+});
+
+test('reports a compass label for a single wind direction', () => {
+  const today = todayInZone('UTC');
+  const result = aggregateForecast(
+    [
+      source('a', [
+        day(today, { tMin: 5, tMax: 15, windMean: 10, windDir: 292.5, humidity: 50, precip: 0 }),
+      ]),
+    ],
+    { timezone: 'UTC', days: 1 },
+  );
+
+  const wind = result.daily[0].wind;
+  assert.equal(wind.direction, 293);
+  assert.equal(wind.directionText, 'WNW');
+  assert.equal(wind.directionCount, 1);
+  assert.equal(wind.directionSpread, null);
+});
+
+test('keeps wind direction out of the consensus when sources omit it', () => {
+  const today = todayInZone('UTC');
+  const result = aggregateForecast(
+    [
+      source('a', [
+        day(today, { tMin: 5, tMax: 15, windMean: 10, windDir: 90, humidity: 50, precip: 0 }),
+      ]),
+      source('b', [day(today, { tMin: 5, tMax: 15, windMean: 10, humidity: 50, precip: 0 })]),
+    ],
+    { timezone: 'UTC', days: 1 },
+  );
+
+  const wind = result.daily[0].wind;
+  assert.equal(wind.direction, 90);
+  assert.equal(wind.directionText, 'E');
+  assert.equal(wind.directionCount, 1);
 });
