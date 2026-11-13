@@ -145,6 +145,19 @@ The resulting APK is copied to:
 ~/Android/Avercast/Avercast-debug.apk
 ```
 
+To build the non-debuggable release APK (also signed with the sideload debug
+certificate so it can update an existing install):
+
+```bash
+source scripts/android-env.sh
+npx cap sync android
+(cd android && ./gradlew assembleRelease)
+cp android/app/build/outputs/apk/release/app-release.apk ~/Android/Avercast/Avercast-release.apk
+```
+
+Use the release APK for normal installation and updates. It omits the debug
+flag but keeps the same certificate as the debug builds.
+
 To use the Android command-line tools manually in a terminal:
 
 ```bash
@@ -161,21 +174,21 @@ source scripts/android-env.sh
 emulator -avd avercast
 ```
 
-The debug package ID is `com.matthias.avercast`. This is a sideload/debug
-build, not a Play Store release; a release signing key and app bundle can be
-added later if you decide to publish it.
+The package ID is `com.matthias.avercast`. These are sideload builds, not a
+Play Store release; a release signing key and app bundle can be added later if
+you decide to publish it.
 
 ### Updating a sideloaded APK
 
 Android only replaces an existing app when the new APK has the same signing
-certificate and a version code that is not lower. The published debug APKs all
-use the same debug certificate, so updates normally install over each other. If
-the phone's package installer only says **App not installed**, get the exact
-reason over USB debugging:
+certificate and a version code that is not lower. The published debug and
+release APKs all use the same certificate, so updates normally install over
+each other. If the phone's package installer only says **App not installed**,
+get the exact reason over USB debugging:
 
 ```bash
 source scripts/android-env.sh
-adb install -r ~/Android/Avercast/Avercast-debug.apk
+adb install -r ~/Android/Avercast/Avercast-release.apk
 ```
 
 The command reports a specific error such as `INSTALL_FAILED_UPDATE_INCOMPATIBLE`

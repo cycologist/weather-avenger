@@ -18,6 +18,10 @@ android {
     }
     buildTypes {
         release {
+            // Keep the debug certificate for sideloaded builds so a release APK can
+            // update an existing debug install. Replace this with a dedicated
+            // keystore before distributing through an app store.
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
