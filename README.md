@@ -165,6 +165,26 @@ The debug package ID is `com.matthias.avercast`. This is a sideload/debug
 build, not a Play Store release; a release signing key and app bundle can be
 added later if you decide to publish it.
 
+### Updating a sideloaded APK
+
+Android only replaces an existing app when the new APK has the same signing
+certificate and a version code that is not lower. The published debug APKs all
+use the same debug certificate, so updates normally install over each other. If
+the phone's package installer only says **App not installed**, get the exact
+reason over USB debugging:
+
+```bash
+source scripts/android-env.sh
+adb install -r ~/Android/Avercast/Avercast-debug.apk
+```
+
+The command reports a specific error such as `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
+(different signing key), `INSTALL_FAILED_VERSION_DOWNGRADE`, or
+`INSTALL_FAILED_INSUFFICIENT_STORAGE`. A signing-key mismatch can only be fixed
+by uninstalling the old copy once and installing the new APK; local settings
+will be lost. Also check the phone's Play Protect/Auto Blocker setting and make
+sure the APK finished downloading before installing.
+
 ## Notes and limitations
 
 - These are model forecasts, not official warnings. Check a national weather service for alerts.
